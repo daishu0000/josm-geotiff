@@ -27,6 +27,11 @@ josm {
         mainClass = "org.openstreetmap.josm.plugins.josmtiff.JosmTiffPlugin"
         minJosmVersion = "19555"
     }
+    github {
+        repositoryOwner = "daishu0000"
+        repositoryName = "josm-geotiff"
+        targetCommitish = "main"
+    }
 }
 
 dependencies {
