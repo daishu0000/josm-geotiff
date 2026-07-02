@@ -2,7 +2,15 @@ plugins {
     id("org.openstreetmap.josm").version("0.8.2")
 }
 
+import org.gradle.api.tasks.JavaExec
+
 version = "0.0.1"
+
+val josmJvmArgs = listOf(
+    "--add-exports=java.base/sun.security.action=ALL-UNNAMED",
+    "--add-exports=java.desktop/com.sun.imageio.plugins.jpeg=ALL-UNNAMED",
+    "--add-exports=java.desktop/com.sun.imageio.spi=ALL-UNNAMED",
+)
 
 josm {
     pluginName = "josmtiff"
@@ -12,4 +20,12 @@ josm {
         mainClass = "org.openstreetmap.josm.plugins.josmtiff.JosmTiffPlugin"
         minJosmVersion = "19555"
     }
+}
+
+tasks.named<JavaExec>("runJosm") {
+    jvmArgs(josmJvmArgs)
+}
+
+tasks.named<JavaExec>("debugJosm") {
+    jvmArgs(josmJvmArgs)
 }
