@@ -12,6 +12,13 @@ val josmJvmArgs = listOf(
     "--add-exports=java.desktop/com.sun.imageio.spi=ALL-UNNAMED",
 )
 
+repositories {
+    maven {
+        url = uri("https://maven.aliyun.com/repository/public")
+    }
+    mavenCentral()
+}
+
 josm {
     pluginName = "josmtiff"
     josmCompileVersion = "19555"
@@ -20,6 +27,10 @@ josm {
         mainClass = "org.openstreetmap.josm.plugins.josmtiff.JosmTiffPlugin"
         minJosmVersion = "19555"
     }
+}
+
+dependencies {
+    packIntoJar("org.apache.commons:commons-imaging:1.0.0-alpha5")
 }
 
 tasks.named<JavaExec>("runJosm") {

@@ -11,6 +11,7 @@ public class JosmTiffPlugin extends Plugin {
         super(info);
         MainMenu mainMenu = MainApplication.getMenu();
         if (mainMenu != null) {
+            MainMenu.add(mainMenu.imageryMenu, new ImportGeoTiffAction());
             MainMenu.add(mainMenu.toolsMenu, new AboutAction());
         }
     }
