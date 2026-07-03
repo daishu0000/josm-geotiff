@@ -6,6 +6,7 @@ import java.awt.AlphaComposite;
 import java.awt.Composite;
 import java.awt.Graphics2D;
 import java.awt.Point;
+import java.awt.image.BufferedImage;
 import java.io.File;
 
 import javax.swing.Action;
@@ -27,14 +28,14 @@ public class GeoTiffLayer extends Layer {
 
     private final File sourceFile;
     private final GeoTiffData data;
-    private java.awt.image.BufferedImage image;
+    private final BufferedImage image;
     private EastNorth min;
     private EastNorth max;
 
     public GeoTiffLayer(GeoTiffData data) {
-        super(data.getSourceFile().getName());
+        super(data.getGeoInfo().getFile().getName());
         this.data = data;
-        this.sourceFile = data.getSourceFile();
+        this.sourceFile = data.getGeoInfo().getFile();
         this.image = data.getImage();
         this.min = data.getMin();
         this.max = data.getMax();

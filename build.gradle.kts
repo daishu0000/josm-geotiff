@@ -35,7 +35,14 @@ josm {
 }
 
 dependencies {
+    val twelveMonkeysVersion = "3.12.0"
     packIntoJar("org.apache.commons:commons-imaging:1.0.0-alpha5")
+    packIntoJar("com.twelvemonkeys.imageio:imageio-tiff:$twelveMonkeysVersion")
+    packIntoJar("com.twelvemonkeys.imageio:imageio-metadata:$twelveMonkeysVersion")
+    packIntoJar("com.twelvemonkeys.imageio:imageio-core:$twelveMonkeysVersion")
+    packIntoJar("com.twelvemonkeys.common:common-lang:$twelveMonkeysVersion")
+    packIntoJar("com.twelvemonkeys.common:common-io:$twelveMonkeysVersion")
+    packIntoJar("com.twelvemonkeys.common:common-image:$twelveMonkeysVersion")
 }
 
 tasks.named<JavaExec>("runJosm") {

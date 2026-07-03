@@ -7,6 +7,7 @@ import java.io.File;
 import java.io.IOException;
 
 import javax.swing.JFileChooser;
+import javax.swing.JOptionPane;
 import javax.swing.filechooser.FileFilter;
 
 import org.openstreetmap.josm.actions.JosmAction;
@@ -20,6 +21,8 @@ import org.openstreetmap.josm.gui.layer.OsmDataLayer;
  * Action to import a GeoTIFF file and add it as a layer.
  */
 public class ImportGeoTiffAction extends JosmAction {
+
+    private static final long LARGE_FILE_BYTES = 200L * 1024 * 1024;
 
     public ImportGeoTiffAction() {
         super(tr("Import GeoTIFF"), "imagery_menu", tr("Import a georeferenced GeoTIFF file as a layer"),
@@ -50,13 +53,34 @@ public class ImportGeoTiffAction extends JosmAction {
             return;
         }
 
-        new ImportGeoTiffTask(chooser.getSelectedFile()).run();
+        File file = chooser.getSelectedFile();
+        if (!confirmLargeFileImport(file)) {
+            return;
+        }
+
+        new ImportGeoTiffTask(file).run();
+    }
+
+    private static boolean confirmLargeFileImport(File file) {
+        if (file.length() < LARGE_FILE_BYTES) {
+            return true;
+        }
+
+        long sizeMb = Math.max(1, file.length() / (1024 * 1024));
+        int choice = JOptionPane.showConfirmDialog(
+                MainApplication.getMainFrame(),
+                tr("This GeoTIFF is large ({0} MB).\nLoading the entire image may take a long time.\n\nContinue importing?",
+                        sizeMb),
+                tr("Large GeoTIFF"),
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.WARNING_MESSAGE);
+        return choice == JOptionPane.OK_OPTION;
     }
 
     private static final class ImportGeoTiffTask extends PleaseWaitRunnable {
 
         private final File file;
-        private GeoTiffData data;
+        private GeoTiffLoader.LoadResult loadResult;
 
         ImportGeoTiffTask(File file) {
             super(tr("Importing GeoTIFF..."), false);
@@ -71,12 +95,21 @@ public class ImportGeoTiffAction extends JosmAction {
         @Override
         protected void realRun() throws IOException {
             getProgressMonitor().indeterminateSubTask(tr("Reading {0}...", file.getName()));
-            data = GeoTiffLoader.read(file);
+            loadResult = GeoTiffLoader.load(file);
         }
 
         @Override
         protected void finish() {
-            if (getProgressMonitor().isCanceled() || data == null) {
+            if (getProgressMonitor().isCanceled() || loadResult == null) {
+                return;
+            }
+
+            if (!loadResult.crsCheck().canImport()) {
+                JOptionPane.showMessageDialog(
+                        MainApplication.getMainFrame(),
+                        loadResult.crsCheck().getMessage(),
+                        loadResult.crsCheck().getDialogTitle(),
+                        JOptionPane.WARNING_MESSAGE);
                 return;
             }
 
@@ -84,7 +117,7 @@ public class ImportGeoTiffAction extends JosmAction {
             OsmDataLayer dataLayer = new OsmDataLayer(new DataSet(), OsmDataLayer.createNewName(), null);
             layerManager.addLayer(dataLayer, false);
 
-            GeoTiffLayer layer = new GeoTiffLayer(data);
+            GeoTiffLayer layer = new GeoTiffLayer(loadResult.data());
             layerManager.addLayer(layer, true);
         }
     }

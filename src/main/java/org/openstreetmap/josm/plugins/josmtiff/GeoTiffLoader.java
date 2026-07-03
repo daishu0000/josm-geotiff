@@ -1,72 +1,150 @@
 package org.openstreetmap.josm.plugins.josmtiff;
 
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
+import java.util.Iterator;
+
+import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.ImageInputStream;
 
 import org.apache.commons.imaging.Imaging;
 import org.apache.commons.imaging.formats.tiff.TiffField;
 import org.apache.commons.imaging.formats.tiff.TiffImageMetadata;
-import org.apache.commons.imaging.formats.tiff.TiffImageParser;
-import org.apache.commons.imaging.formats.tiff.TiffImagingParameters;
 import org.apache.commons.imaging.formats.tiff.constants.GeoTiffTagConstants;
+import org.apache.commons.imaging.formats.tiff.constants.TiffTagConstants;
 import org.openstreetmap.josm.data.coor.EastNorth;
 import org.openstreetmap.josm.data.coor.LatLon;
 import org.openstreetmap.josm.data.projection.Projection;
 import org.openstreetmap.josm.data.projection.ProjectionRegistry;
 
 /**
- * Reads GeoTIFF files and converts their bounds to the current JOSM projection.
+ * Reads GeoTIFF metadata and converts bounds to the current JOSM projection.
  */
 public final class GeoTiffLoader {
-
-    private static final int GEOGRAPHIC_TYPE_GEO_KEY = 2048;
-    private static final int PROJECTED_CRS_TYPE_GEO_KEY = 3072;
 
     private GeoTiffLoader() {
     }
 
     /**
-     * Loads a GeoTIFF file and converts its bounds to JOSM east/north coordinates.
+     * Reads CRS information and GeoTIFF metadata in a single pass over the file.
      *
      * @param file the GeoTIFF file
-     * @return the loaded data
-     * @throws IOException if the file cannot be read or lacks georeferencing
+     * @return inspection result and loaded data when import is possible
+     * @throws IOException if the file cannot be read
      */
-    public static GeoTiffData read(File file) throws IOException {
+    public static LoadResult load(File file) throws IOException {
         try {
-            TiffImagingParameters params = new TiffImagingParameters();
-            TiffImageParser parser = new TiffImageParser();
-            BufferedImage image = parser.getBufferedImage(file, params);
-            if (image == null) {
-                throw new IOException("Cannot decode TIFF image: " + file.getAbsolutePath());
-            }
-
-            byte[] bytes = Files.readAllBytes(file.toPath());
-            TiffImageMetadata metadata;
-            try (InputStream in = new ByteArrayInputStream(bytes)) {
-                metadata = (TiffImageMetadata) Imaging.getMetadata(in, file.getName());
-            }
+            TiffImageMetadata metadata = readTiffMetadata(file);
             if (metadata == null || metadata.getDirectories().isEmpty()) {
                 throw new IOException("Missing TIFF metadata: " + file.getAbsolutePath());
             }
 
             TiffImageMetadata.Directory directory = (TiffImageMetadata.Directory) metadata.getDirectories().get(0);
-            GeoBounds geoBounds = readGeoBounds(directory, image.getWidth(), image.getHeight());
-            return new GeoTiffData(file, image, geoBounds.minX, geoBounds.minY, geoBounds.maxX, geoBounds.maxY);
+            GeoTiffCrsCheck.Result crsCheck = GeoTiffCrsCheck.inspectDirectory(directory);
+            if (!crsCheck.canImport()) {
+                return new LoadResult(crsCheck, null);
+            }
+            return new LoadResult(crsCheck, buildGeoTiffData(file, directory));
+        } catch (IOException e) {
+            throw e;
         } catch (Exception e) {
-            throw new IOException("Failed to read GeoTIFF: " + e.getMessage(), e);
+            throw new IOException("Failed to read GeoTIFF metadata: " + e.getMessage(), e);
         }
     }
 
-    private static GeoBounds readGeoBounds(TiffImageMetadata.Directory directory, int width, int height)
-            throws Exception {
-        double[] transform = readModelTransformation(directory);
-        if (transform != null) {
-            return boundsFromTransformation(transform, width, height);
+    static TiffImageMetadata readTiffMetadata(File file) throws IOException {
+        try {
+            return (TiffImageMetadata) Imaging.getMetadata(file);
+        } catch (Exception e) {
+            if (e instanceof IOException io) {
+                throw io;
+            }
+            throw new IOException("Failed to read TIFF metadata: " + e.getMessage(), e);
+        }
+    }
+
+    private static GeoTiffData buildGeoTiffData(File file, TiffImageMetadata.Directory directory) throws Exception {
+        int width = readImageWidth(directory);
+        int height = readImageHeight(directory);
+        GeoTransform transform = readGeoTransform(directory);
+        GeoBounds geoBounds = readGeoBounds(directory, width, height, transform);
+
+        GeoTiffGeoInfo geoInfo = new GeoTiffGeoInfo(
+                file, width, height,
+                geoBounds.minX, geoBounds.minY, geoBounds.maxX, geoBounds.maxY,
+                transform.originLon, transform.originLat, transform.scaleLon, transform.scaleLat,
+                transform.affine);
+        BufferedImage image = decodeImage(file);
+        return new GeoTiffData(geoInfo, image);
+    }
+
+    private static BufferedImage decodeImage(File file) throws IOException {
+        try (ImageInputStream input = ImageIO.createImageInputStream(file)) {
+            if (input == null) {
+                throw new IOException("Failed to open TIFF file: " + file.getName());
+            }
+
+            Iterator<ImageReader> readers = ImageIO.getImageReaders(input);
+            if (!readers.hasNext()) {
+                throw new IOException("No TIFF ImageReader available for: " + file.getName());
+            }
+
+            ImageReader reader = readers.next();
+            try {
+                reader.setInput(input);
+                BufferedImage image = reader.read(0);
+                if (image == null) {
+                    throw new IOException("Failed to decode TIFF image: " + file.getAbsolutePath());
+                }
+                return image;
+            } finally {
+                reader.dispose();
+            }
+        }
+    }
+
+    public record LoadResult(GeoTiffCrsCheck.Result crsCheck, GeoTiffData data) {
+    }
+
+    private static int readImageWidth(TiffImageMetadata.Directory directory) throws Exception {
+        TiffField field = directory.findField(TiffTagConstants.TIFF_TAG_IMAGE_WIDTH);
+        if (field == null) {
+            throw new IOException("Missing TIFF image width.");
+        }
+        return field.getIntValue();
+    }
+
+    private static int readImageHeight(TiffImageMetadata.Directory directory) throws Exception {
+        TiffField field = directory.findField(TiffTagConstants.TIFF_TAG_IMAGE_LENGTH);
+        if (field == null) {
+            throw new IOException("Missing TIFF image height.");
+        }
+        return field.getIntValue();
+    }
+
+    private static GeoBounds readGeoBounds(TiffImageMetadata.Directory directory, int width, int height,
+            GeoTransform transform) throws Exception {
+        if (transform.affine != null) {
+            GeoTiffCrsCheck.ensureSupported(GeoTiffCrsCheck.readEpsg(directory));
+            return boundsFromTransformation(transform.affine, width, height);
+        }
+
+        double minX = Math.min(transform.originLon, transform.originLon + width * transform.scaleLon);
+        double maxX = Math.max(transform.originLon, transform.originLon + width * transform.scaleLon);
+        double minY = Math.min(transform.originLat, transform.originLat + height * transform.scaleLat);
+        double maxY = Math.max(transform.originLat, transform.originLat + height * transform.scaleLat);
+
+        int epsg = GeoTiffCrsCheck.readEpsg(directory);
+        GeoTiffCrsCheck.ensureSupported(epsg);
+        return new GeoBounds(minX, minY, maxX, maxY);
+    }
+
+    private static GeoTransform readGeoTransform(TiffImageMetadata.Directory directory) throws Exception {
+        double[] affine = readModelTransformation(directory);
+        if (affine != null) {
+            return new GeoTransform(affine[0], affine[3], affine[1], affine[5], affine);
         }
 
         TiffField tiePointField = directory.findField(GeoTiffTagConstants.EXIF_TAG_MODEL_TIEPOINT_TAG);
@@ -81,21 +159,14 @@ public final class GeoTiffLoader {
             throw new IOException("Invalid GeoTIFF georeferencing tags.");
         }
 
-        double originX = tiePoints[3];
-        double originY = tiePoints[4];
+        // GeoTIFF spec: Y = TiepointY - (Row - TiepointJ) * ScaleY (ScaleY in tag is a positive magnitude)
+        double tieI = tiePoints[0];
+        double tieJ = tiePoints[1];
         double scaleX = scale[0];
-        double scaleY = scale[1];
-        double minX = Math.min(originX, originX + width * scaleX);
-        double maxX = Math.max(originX, originX + width * scaleX);
-        double minY = Math.min(originY, originY + height * scaleY);
-        double maxY = Math.max(originY, originY + height * scaleY);
-
-        int epsg = readEpsg(directory);
-        if (epsg != 4326) {
-            throw new IOException("Unsupported GeoTIFF CRS: EPSG:" + epsg
-                    + ". Currently only geographic coordinates (EPSG:4326) are supported.");
-        }
-        return new GeoBounds(minX, minY, maxX, maxY, epsg);
+        double scaleY = -Math.abs(scale[1]);
+        double originLon = tiePoints[3] - tieI * scaleX;
+        double originLat = tiePoints[4] - tieJ * scaleY;
+        return new GeoTransform(originLon, originLat, scaleX, scaleY, null);
     }
 
     private static GeoBounds boundsFromTransformation(double[] m, int width, int height) {
@@ -113,7 +184,7 @@ public final class GeoTiffLoader {
             minY = Math.min(minY, y);
             maxY = Math.max(maxY, y);
         }
-        return new GeoBounds(minX, minY, maxX, maxY, 4326);
+        return new GeoBounds(minX, minY, maxX, maxY);
     }
 
     private static double[] readModelTransformation(TiffImageMetadata.Directory directory) throws Exception {
@@ -126,30 +197,6 @@ public final class GeoTiffLoader {
             return null;
         }
         return matrix;
-    }
-
-    private static int readEpsg(TiffImageMetadata.Directory directory) throws Exception {
-        TiffField field = directory.findField(GeoTiffTagConstants.EXIF_TAG_GEO_KEY_DIRECTORY_TAG);
-        if (field == null) {
-            return 4326;
-        }
-        Object value = field.getValue();
-        if (!(value instanceof short[] geoKeys) || geoKeys.length < 4) {
-            return 4326;
-        }
-        int numberOfKeys = geoKeys[3] & 0xFFFF;
-        for (int i = 0; i < numberOfKeys; i++) {
-            int base = 4 + i * 4;
-            if (base + 3 >= geoKeys.length) {
-                break;
-            }
-            int keyId = geoKeys[base] & 0xFFFF;
-            int geoKeyValue = geoKeys[base + 3] & 0xFFFF;
-            if (keyId == GEOGRAPHIC_TYPE_GEO_KEY || keyId == PROJECTED_CRS_TYPE_GEO_KEY) {
-                return geoKeyValue;
-            }
-        }
-        return 4326;
     }
 
     static EastNorth[] toEastNorthCorners(double minLon, double minLat, double maxLon, double maxLat) {
@@ -187,14 +234,28 @@ public final class GeoTiffLoader {
         private final double minY;
         private final double maxX;
         private final double maxY;
-        private final int epsg;
 
-        private GeoBounds(double minX, double minY, double maxX, double maxY, int epsg) {
+        private GeoBounds(double minX, double minY, double maxX, double maxY) {
             this.minX = minX;
             this.minY = minY;
             this.maxX = maxX;
             this.maxY = maxY;
-            this.epsg = epsg;
+        }
+    }
+
+    private static final class GeoTransform {
+        private final double originLon;
+        private final double originLat;
+        private final double scaleLon;
+        private final double scaleLat;
+        private final double[] affine;
+
+        private GeoTransform(double originLon, double originLat, double scaleLon, double scaleLat, double[] affine) {
+            this.originLon = originLon;
+            this.originLat = originLat;
+            this.scaleLon = scaleLon;
+            this.scaleLat = scaleLat;
+            this.affine = affine;
         }
     }
 }
