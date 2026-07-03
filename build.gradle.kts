@@ -4,7 +4,7 @@ plugins {
 
 import org.gradle.api.tasks.JavaExec
 
-version = "0.0.1"
+version = "0.0.2"
 
 val josmJvmArgs = listOf(
     "--add-exports=java.base/sun.security.action=ALL-UNNAMED",

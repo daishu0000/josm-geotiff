@@ -1,5 +1,5 @@
 releases:
-  - label: 0.0.1
+  - label: 0.0.2
     minJosmVersion: 19555
     description: |
-      TIFF image support for JOSM
+      Freeze UI on loading
