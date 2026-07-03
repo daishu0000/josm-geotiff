@@ -3,8 +3,12 @@ plugins {
 }
 
 import org.gradle.api.tasks.JavaExec
+import org.openstreetmap.josm.gradle.plugin.task.github.PublishToGithubReleaseTask
 
 version = "0.0.3"
+
+val releaseJarName = "josmtiff.jar"
+val releaseJarPath = layout.buildDirectory.file("dist/$releaseJarName")
 
 val josmJvmArgs = listOf(
     "--add-exports=java.base/sun.security.action=ALL-UNNAMED",
@@ -51,4 +55,17 @@ tasks.named<JavaExec>("runJosm") {
 
 tasks.named<JavaExec>("debugJosm") {
     jvmArgs(josmJvmArgs)
+}
+
+tasks.named<PublishToGithubReleaseTask>("publishToGithubRelease") {
+    dependsOn("dist")
+    mustRunAfter("createGithubRelease")
+    localJarPath = releaseJarPath.get().asFile.absolutePath
+    remoteJarName = releaseJarName
+}
+
+tasks.register("release") {
+    group = "release"
+    description = "Build dist JAR, create GitHub release, and upload $releaseJarName"
+    dependsOn("createGithubRelease", "publishToGithubRelease")
 }

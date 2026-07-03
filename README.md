@@ -97,86 +97,54 @@ file:/<项目绝对路径>/build/localDist/list
 
 ## 发布 Release
 
-本项目使用 [gradle-josm-plugin](https://gitlab.com/JOSM/gradle-josm-plugin) 的 GitHub Release 任务发布。JOSM 官方插件列表会从 GitHub 仓库的 **latest** Release 自动拉取新版本。
+GitHub 仓库见 `build.gradle.kts` 中的 `josm.github`（当前为 `daishu0000/josm-geotiff`）。
 
-GitHub 仓库配置见 `build.gradle.kts` 中的 `josm.github` 块（当前为 `daishu0000/josm-geotiff`）。
+JOSM 官方插件列表从 Wiki 登记的固定链接下载 JAR（`.../releases/latest/download/josmtiff.jar`），因此 Release 附件名必须是 **`josmtiff.jar`**。`build.gradle.kts` 已配置 `release` 任务自动上传该文件名。
 
-### 1. 更新版本号
+### 一次性配置 GitHub Token
 
-同步修改以下两处：
-
-**`build.gradle.kts`** — 项目版本：
-
-```kotlin
-version = "0.0.2"  // 新版本号
-```
-
-**`releases.yml`** — 在文件**顶部**追加新条目（最新一条会被发布任务使用）：
-
-```yaml
-releases:
-  - label: 0.0.2
-    minJosmVersion: 19555
-    description: |
-      本次更新的说明
-  - label: 0.0.1
-    minJosmVersion: 19555
-    description: |
-      TIFF image support for JOSM
-```
-
-`label` 应与 `build.gradle.kts` 中的 `version` 一致。若 `minJosmVersion` 有变化，需同步更新 `build.gradle.kts` 中 `josm.manifest.minJosmVersion` 和 `josmCompileVersion`。
-
-### 2. 构建并提交
+Personal Access Token 需具备目标仓库 **Contents** 写权限。任选一种方式（勿提交到 Git）：
 
 ```bash
-./gradlew clean build
+# 环境变量（Windows PowerShell）
+$env:GITHUB_ACCESS_TOKEN = "<token>"
+
+# 或写入 ~/.gradle/gradle.properties
+josm.github.accessToken=<token>
+```
+
+### 发布三步
+
+**1. 改版本号**（两处保持一致）：
+
+- `build.gradle.kts` → `version = "0.0.4"`
+- `releases.yml` → 在**顶部**追加新条目，`label` 与 `version` 相同
+
+若 `minJosmVersion` 变化，同步更新 `build.gradle.kts` 中的 `josm.manifest.minJosmVersion` 和 `josmCompileVersion`。
+
+**2. 提交并打 tag**（tag 名与 `version` 一致）：
+
+```bash
 git add build.gradle.kts releases.yml
-git commit -m "Release 0.0.2"
+git commit -m "Release 0.0.4"
 git push
+git tag 0.0.4
+git push origin 0.0.4
 ```
 
-### 3. 创建 Git Tag
-
-标签名需与 `releases.yml` 中最新条目的 `label` 对应（可按团队习惯加 `v` 前缀，但需与发布命令保持一致）：
-
-```bash
-git tag 0.0.2
-git push origin 0.0.2
-```
-
-### 4. 配置 GitHub 访问令牌
-
-发布任务需要 GitHub API 权限。设置环境变量：
+**3. 一键发布**：
 
 ```bash
 # Linux / macOS
-export GITHUB_ACCESS_TOKEN=<your_github_personal_access_token>
+./gradlew release
 
-# Windows PowerShell
-$env:GITHUB_ACCESS_TOKEN = "<your_github_personal_access_token>"
+# Windows
+gradlew.bat release
 ```
 
-Personal Access Token 需具备目标仓库的 **Contents** 写权限（用于创建 Release 并上传附件）。
+该任务依次执行：构建 `build/dist/josmtiff.jar` → 创建 GitHub Release → 上传 `josmtiff.jar`。
 
-### 5. 创建 GitHub Release 并上传 JAR
-
-```bash
-# 根据 releases.yml 最新条目创建 GitHub Release
-./gradlew createGithubRelease
-
-# 将 build/dist/josmtiff.jar 上传为 Release 附件
-./gradlew publishToGithubRelease
-```
-
-也可显式指定版本标签：
-
-```bash
-./gradlew createGithubRelease --release-label=0.0.2
-./gradlew publishToGithubRelease --release-label=0.0.2
-```
-
-发布完成后，GitHub 上的 latest Release 即为 JOSM 插件管理器可检测到的新版本。
+发布成功后，约 10 分钟内 JOSM 官方列表会更新；在 JOSM **偏好设置 → 插件 → 下载列表** 刷新即可看到新版本。
 
 ## 项目结构
 
