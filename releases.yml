@@ -1,4 +1,10 @@
 releases:
+  - label: 0.0.3
+    minJosmVersion: 19555
+    description: |
+      优化 GeoTIFF 读取性能（TwelveMonkeys 解码、去除重复读文件）
+      导入前 CRS 检查（仅支持 EPSG:4326）
+      大文件（>200MB）导入确认提示
   - label: 0.0.2
     minJosmVersion: 19555
     description: |
