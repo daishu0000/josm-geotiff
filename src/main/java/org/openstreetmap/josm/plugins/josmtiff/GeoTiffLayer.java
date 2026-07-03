@@ -19,7 +19,6 @@ import org.openstreetmap.josm.gui.MapView;
 import org.openstreetmap.josm.gui.layer.Layer;
 import org.openstreetmap.josm.tools.ImageProvider;
 import org.openstreetmap.josm.tools.ImageProvider.ImageSizes;
-import org.openstreetmap.josm.tools.Logging;
 
 /**
  * Layer that displays a georeferenced GeoTIFF image.
@@ -27,12 +26,14 @@ import org.openstreetmap.josm.tools.Logging;
 public class GeoTiffLayer extends Layer {
 
     private final File sourceFile;
+    private final GeoTiffData data;
     private java.awt.image.BufferedImage image;
     private EastNorth min;
     private EastNorth max;
 
     public GeoTiffLayer(GeoTiffData data) {
         super(data.getSourceFile().getName());
+        this.data = data;
         this.sourceFile = data.getSourceFile();
         this.image = data.getImage();
         this.min = data.getMin();
@@ -108,14 +109,9 @@ public class GeoTiffLayer extends Layer {
 
     @Override
     public void projectionChanged(Projection oldValue, Projection newValue) {
-        try {
-            GeoTiffData data = GeoTiffLoader.read(sourceFile);
-            this.image = data.getImage();
-            this.min = data.getMin();
-            this.max = data.getMax();
-            invalidate();
-        } catch (Exception e) {
-            Logging.error(e);
-        }
+        data.reprojectBounds();
+        this.min = data.getMin();
+        this.max = data.getMax();
+        invalidate();
     }
 }

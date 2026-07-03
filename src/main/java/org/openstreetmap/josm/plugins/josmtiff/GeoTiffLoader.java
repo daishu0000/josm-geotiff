@@ -56,10 +56,7 @@ public final class GeoTiffLoader {
 
             TiffImageMetadata.Directory directory = (TiffImageMetadata.Directory) metadata.getDirectories().get(0);
             GeoBounds geoBounds = readGeoBounds(directory, image.getWidth(), image.getHeight());
-            EastNorth[] corners = toEastNorthCorners(geoBounds);
-            EastNorth min = minCorner(corners);
-            EastNorth max = maxCorner(corners);
-            return new GeoTiffData(file, image, min, max);
+            return new GeoTiffData(file, image, geoBounds.minX, geoBounds.minY, geoBounds.maxX, geoBounds.maxY);
         } catch (Exception e) {
             throw new IOException("Failed to read GeoTIFF: " + e.getMessage(), e);
         }
@@ -94,6 +91,10 @@ public final class GeoTiffLoader {
         double maxY = Math.max(originY, originY + height * scaleY);
 
         int epsg = readEpsg(directory);
+        if (epsg != 4326) {
+            throw new IOException("Unsupported GeoTIFF CRS: EPSG:" + epsg
+                    + ". Currently only geographic coordinates (EPSG:4326) are supported.");
+        }
         return new GeoBounds(minX, minY, maxX, maxY, epsg);
     }
 
@@ -112,7 +113,7 @@ public final class GeoTiffLoader {
             minY = Math.min(minY, y);
             maxY = Math.max(maxY, y);
         }
-        return new GeoBounds(minX, minY, maxX, maxY, 0);
+        return new GeoBounds(minX, minY, maxX, maxY, 4326);
     }
 
     private static double[] readModelTransformation(TiffImageMetadata.Directory directory) throws Exception {
@@ -151,21 +152,17 @@ public final class GeoTiffLoader {
         return 4326;
     }
 
-    private static EastNorth[] toEastNorthCorners(GeoBounds bounds) throws IOException {
+    static EastNorth[] toEastNorthCorners(double minLon, double minLat, double maxLon, double maxLat) {
         Projection projection = ProjectionRegistry.getProjection();
-        if (bounds.epsg == 4326 || bounds.epsg == 0) {
-            return new EastNorth[] {
-                    projection.latlon2eastNorth(new LatLon(bounds.minY, bounds.minX)),
-                    projection.latlon2eastNorth(new LatLon(bounds.minY, bounds.maxX)),
-                    projection.latlon2eastNorth(new LatLon(bounds.maxY, bounds.minX)),
-                    projection.latlon2eastNorth(new LatLon(bounds.maxY, bounds.maxX))
-            };
-        }
-        throw new IOException("Unsupported GeoTIFF CRS: EPSG:" + bounds.epsg
-                + ". Currently only geographic coordinates (EPSG:4326) are supported.");
+        return new EastNorth[] {
+                projection.latlon2eastNorth(new LatLon(minLat, minLon)),
+                projection.latlon2eastNorth(new LatLon(minLat, maxLon)),
+                projection.latlon2eastNorth(new LatLon(maxLat, minLon)),
+                projection.latlon2eastNorth(new LatLon(maxLat, maxLon))
+        };
     }
 
-    private static EastNorth minCorner(EastNorth[] corners) {
+    static EastNorth minCorner(EastNorth[] corners) {
         double east = Double.POSITIVE_INFINITY;
         double north = Double.POSITIVE_INFINITY;
         for (EastNorth corner : corners) {
@@ -175,7 +172,7 @@ public final class GeoTiffLoader {
         return new EastNorth(east, north);
     }
 
-    private static EastNorth maxCorner(EastNorth[] corners) {
+    static EastNorth maxCorner(EastNorth[] corners) {
         double east = Double.NEGATIVE_INFINITY;
         double north = Double.NEGATIVE_INFINITY;
         for (EastNorth corner : corners) {

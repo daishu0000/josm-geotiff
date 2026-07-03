@@ -7,15 +7,14 @@ import java.io.File;
 import java.io.IOException;
 
 import javax.swing.JFileChooser;
-import javax.swing.JOptionPane;
 import javax.swing.filechooser.FileFilter;
 
 import org.openstreetmap.josm.actions.JosmAction;
 import org.openstreetmap.josm.data.osm.DataSet;
 import org.openstreetmap.josm.gui.MainApplication;
+import org.openstreetmap.josm.gui.PleaseWaitRunnable;
 import org.openstreetmap.josm.gui.layer.MainLayerManager;
 import org.openstreetmap.josm.gui.layer.OsmDataLayer;
-import org.openstreetmap.josm.tools.Logging;
 
 /**
  * Action to import a GeoTIFF file and add it as a layer.
@@ -51,23 +50,42 @@ public class ImportGeoTiffAction extends JosmAction {
             return;
         }
 
-        File file = chooser.getSelectedFile();
-        try {
-            GeoTiffData data = GeoTiffLoader.read(file);
-            MainLayerManager layerManager = MainApplication.getLayerManager();
+        new ImportGeoTiffTask(chooser.getSelectedFile()).run();
+    }
 
+    private static final class ImportGeoTiffTask extends PleaseWaitRunnable {
+
+        private final File file;
+        private GeoTiffData data;
+
+        ImportGeoTiffTask(File file) {
+            super(tr("Importing GeoTIFF..."), false);
+            this.file = file;
+        }
+
+        @Override
+        protected void cancel() {
+            // GeoTIFF decoding cannot be interrupted yet; ignore the loaded result in finish().
+        }
+
+        @Override
+        protected void realRun() throws IOException {
+            getProgressMonitor().indeterminateSubTask(tr("Reading {0}...", file.getName()));
+            data = GeoTiffLoader.read(file);
+        }
+
+        @Override
+        protected void finish() {
+            if (getProgressMonitor().isCanceled() || data == null) {
+                return;
+            }
+
+            MainLayerManager layerManager = MainApplication.getLayerManager();
             OsmDataLayer dataLayer = new OsmDataLayer(new DataSet(), OsmDataLayer.createNewName(), null);
             layerManager.addLayer(dataLayer, false);
 
             GeoTiffLayer layer = new GeoTiffLayer(data);
             layerManager.addLayer(layer, true);
-        } catch (IOException ex) {
-            Logging.error(ex);
-            JOptionPane.showMessageDialog(
-                    MainApplication.getMainFrame(),
-                    tr("Failed to import GeoTIFF:\n{0}", ex.getMessage()),
-                    tr("Import GeoTIFF"),
-                    JOptionPane.ERROR_MESSAGE);
         }
     }
 }

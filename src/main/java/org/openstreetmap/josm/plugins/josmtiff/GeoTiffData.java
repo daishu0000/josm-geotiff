@@ -6,20 +6,36 @@ import java.io.File;
 import org.openstreetmap.josm.data.coor.EastNorth;
 
 /**
- * Holds a reprojected GeoTIFF image and its bounds in JOSM east/north coordinates.
+ * Holds a GeoTIFF image, its geographic bounds, and the corresponding JOSM east/north bounds.
  */
 public final class GeoTiffData {
 
     private final File sourceFile;
     private final BufferedImage image;
-    private final EastNorth min;
-    private final EastNorth max;
+    private final double minLon;
+    private final double minLat;
+    private final double maxLon;
+    private final double maxLat;
+    private EastNorth min;
+    private EastNorth max;
 
-    public GeoTiffData(File sourceFile, BufferedImage image, EastNorth min, EastNorth max) {
+    public GeoTiffData(File sourceFile, BufferedImage image, double minLon, double minLat, double maxLon, double maxLat) {
         this.sourceFile = sourceFile;
         this.image = image;
-        this.min = min;
-        this.max = max;
+        this.minLon = minLon;
+        this.minLat = minLat;
+        this.maxLon = maxLon;
+        this.maxLat = maxLat;
+        reprojectBounds();
+    }
+
+    /**
+     * Recalculates east/north bounds from the stored geographic bounds using the current projection.
+     */
+    public void reprojectBounds() {
+        EastNorth[] corners = GeoTiffLoader.toEastNorthCorners(minLon, minLat, maxLon, maxLat);
+        this.min = GeoTiffLoader.minCorner(corners);
+        this.max = GeoTiffLoader.maxCorner(corners);
     }
 
     public File getSourceFile() {
