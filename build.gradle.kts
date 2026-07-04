@@ -30,6 +30,7 @@ josm {
         description = "TIFF image support for JOSM"
         mainClass = "org.openstreetmap.josm.plugins.josmtiff.JosmTiffPlugin"
         minJosmVersion = "19555"
+        author = "smallCat"
     }
     github {
         repositoryOwner = "daishu0000"
