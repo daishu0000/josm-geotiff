@@ -5,7 +5,7 @@ plugins {
 import org.gradle.api.tasks.JavaExec
 import org.openstreetmap.josm.gradle.plugin.task.github.PublishToGithubReleaseTask
 
-version = "0.0.3"
+version = "0.0.4"
 
 val releaseJarName = "josmtiff.jar"
 val releaseJarPath = layout.buildDirectory.file("dist/$releaseJarName")
